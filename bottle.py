@@ -90,6 +90,7 @@ import thread
 import tempfile
 import hmac
 import base64
+import datetime
 from urllib import quote as urlquote
 from urlparse import urlunsplit, urljoin
 
@@ -639,7 +640,6 @@ class Request(threading.local):
         dec = cookie_decode(value, sec)
         return dec or value
 
-
 class Response(threading.local):
     """ Represents a single response using thread-local namespace. """
 
@@ -669,12 +669,12 @@ class Response(threading.local):
             self._COOKIES = SimpleCookie()
         return self._COOKIES
 
-    def set_cookie(self, key, value, **kargs):
+    def set_cookie(self, key, value, encoded=False, **kargs):
         """
         Sets a Cookie. Optional settings:
         expires, path, comment, domain, max-age, secure, version, httponly
         """
-        if not isinstance(value, basestring):
+        if not isinstance(value, basestring) or hash:
             sec = self.app.config['securecookie.key']
             value = cookie_encode(value, sec)
         self.COOKIES[key] = value
@@ -700,6 +700,7 @@ class BaseController(object):
         if not cls._singleton:
             cls._singleton = object.__new__(cls, *a, **k)
         return cls._singleton
+
 
 class MultiDict(dict):
     def getone(self, key, default = KeyError):
@@ -829,6 +830,14 @@ def cookie_decode(data, key):
 def cookie_is_encoded(data):
   ''' Verify and decode an encoded string. Return an object or None'''
   return bool(data.startswith('!') and '?' in data)
+
+def cookie_expiry(seconds_from_now):
+    """Returns a string in cookie compatible format for the expiration date"""
+    now = datetime.datetime.utcnow()
+    diff = datetime.timedelta(seconds=seconds_from_now)
+    then = now + diff
+    return then.strftime('%a, %d-%b-%Y %H:%M:%S UTC')
+    
 
 def url(routename, **kargs):
     """
