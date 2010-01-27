@@ -91,6 +91,7 @@ import tempfile
 import hmac
 import base64
 import datetime
+import uuid
 from urllib import quote as urlquote
 from urlparse import urlunsplit, urljoin
 
@@ -121,10 +122,6 @@ except ImportError: # pragma: no cover
     json_dumps = None
 
 
-
-
-
-
 # Exceptions and Events
 
 class BottleException(Exception):
@@ -153,8 +150,6 @@ class HTTPError(HTTPResponse):
             'error_name' : HTTP_CODES.get(self.status, 'Unknown').title(),
             'error_message' : str(self.output)
         }
-
-
 
 
 
@@ -382,6 +377,18 @@ class Bottle(object):
             return handler
         return wrapper
 
+    def check_xsrf(self):
+        """Returns False if `_xsrf` token doesn't match in POST/ cookies"""
+
+        if request.header.get('X-Requested-With') == 'XMLHttpRequest':
+            return True
+        
+        token = request.POST.get('_xsrf', None)
+        if token != request.xsrf_token:
+            return False
+        
+        return True
+
     def handle(self, url, method, catchall=True):
         """ Run the matching handler. Return handler output, HTTPResponse or
         HTTPError. If catchall is true, all exceptions thrown within a
@@ -395,6 +402,10 @@ class Bottle(object):
             return HTTPError(404, "Not found")
         if not args:
             args = dict()
+
+        if method == 'POST':
+            if not self.check_xsrf():
+                return HTTPError(403, "_xsrf does not match")
 
         try:
             return handler(**args)
@@ -495,6 +506,7 @@ class Request(threading.local):
         self._COOKIES = None
         self._body = None
         self._header = None
+        self._xsrf_token = None
         self.path = environ.get('PATH_INFO', '/').strip()
         self.app = app
         if not self.path.startswith('/'):
@@ -549,6 +561,7 @@ class Request(threading.local):
     def header(self):
         ''' Dictionary containing HTTP headers'''
         if self._header is None:
+            self._header = {}
             for key, value in self.environ.iteritems():
                 if key.startswith('HTTP_'):
                     key = key[5:].replace('_','-').title()
@@ -633,6 +646,23 @@ class Request(threading.local):
             for cookie in raw_dict.itervalues():
                 self._COOKIES[cookie.key] = cookie.value
         return self._COOKIES
+
+    @property
+    def xsrf_token(self):
+        if not self._xsrf_token:
+            token = self.get_cookie('_xsrf', None)
+            if not token:
+                token = str(uuid.uuid4())
+                response.set_cookie('_xsrf', token, 
+                                    expires=cookie_expiry(
+                                          2 * 365 * 24 * 60 * 60),
+                                    path='/')
+        self._xsrf_token = token
+        return token
+
+    def xsrf_html(self):
+        return '<input type="hidden" name="_xsrf" value="%s" />' % \
+            self.xsrf_token
 
     def get_cookie(self, *args):
         value = self.COOKIES.get(*args)
@@ -829,7 +859,9 @@ def cookie_decode(data, key):
 
 def cookie_is_encoded(data):
   ''' Verify and decode an encoded string. Return an object or None'''
-  return bool(data.startswith('!') and '?' in data)
+  if data:
+      return bool(data.startswith('!') and '?' in data)
+  return False
 
 def cookie_expiry(seconds_from_now):
     """Returns a string in cookie compatible format for the expiration date"""
