@@ -704,7 +704,7 @@ class Response(threading.local):
         Sets a Cookie. Optional settings:
         expires, path, comment, domain, max-age, secure, version, httponly
         """
-        if not isinstance(value, basestring) or hash:
+        if not isinstance(value, basestring) or encoded:
             sec = self.app.config['securecookie.key']
             value = cookie_encode(value, sec)
         self.COOKIES[key] = value
