@@ -657,8 +657,8 @@ class Request(threading.local):
                                     expires=cookie_expiry(
                                           2 * 365 * 24 * 60 * 60),
                                     path='/')
-        self._xsrf_token = token
-        return token
+            self._xsrf_token = token
+        return self._xsrf_token
 
     def xsrf_html(self):
         return '<input type="hidden" name="_xsrf" value="%s" />' % \
